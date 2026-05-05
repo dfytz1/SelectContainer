@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using Grasshopper;
 using Grasshopper.GUI.Canvas;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
 using Grasshopper.Rhinoceros.Model;
 using Rhino;
@@ -117,11 +118,106 @@ internal static class SelectContainerCanvasHook
 	internal static void Register()
 	{
 		Instances.CanvasCreated += OnCanvasCreated;
+		RhinoDoc.ReplaceRhinoObject += OnRhinoObjectReplaced;
+		RhinoDoc.UndeleteRhinoObject += OnRhinoObjectUndeleted;
 	}
 
 	private static void OnCanvasCreated(GH_Canvas canvas)
 	{
 		canvas.MouseDoubleClick += OnCanvasDoubleClick;
+	}
+
+	private static void OnRhinoObjectReplaced(object sender, RhinoReplaceObjectEventArgs e)
+	{
+		if (e == null)
+			return;
+
+		if (e.NewRhinoObject != null)
+			ExpireParamsReferencingObject(e.NewRhinoObject.Id);
+
+		if (e.OldRhinoObject != null &&
+		    (e.NewRhinoObject == null || e.OldRhinoObject.Id != e.NewRhinoObject.Id))
+			ExpireParamsReferencingObject(e.OldRhinoObject.Id);
+	}
+
+	private static void OnRhinoObjectUndeleted(object sender, RhinoObjectEventArgs e)
+	{
+		if (e?.TheObject == null)
+			return;
+
+		ExpireParamsReferencingObject(e.TheObject.Id);
+	}
+
+	/// <summary>
+	/// When Rhino replaces or un-deletes geometry, referenced gh goos must be expired or they keep stale
+	/// meshes until a full manual recompute.
+	/// </summary>
+	private static void ExpireParamsReferencingObject(Guid id)
+	{
+		if (id == Guid.Empty)
+			return;
+
+		var server = Instances.DocumentServer;
+		if (server == null)
+			return;
+
+		var toSchedule = new List<GH_Document>();
+
+		for (var i = 0; i < server.DocumentCount; i++)
+		{
+			var ghDoc = server[i];
+			if (ghDoc == null)
+				continue;
+
+			var expiredAny = false;
+
+			foreach (IGH_DocumentObject obj in ghDoc.Objects)
+			{
+				if (obj is not IGH_Param param)
+					continue;
+
+				if (!ParamTreeReferencesObjectId(param, id))
+					continue;
+
+				param.ExpireSolution(false);
+				expiredAny = true;
+			}
+
+			if (expiredAny)
+				toSchedule.Add(ghDoc);
+		}
+
+		foreach (var d in toSchedule)
+			d.ScheduleSolution(1);
+	}
+
+	private static bool ParamTreeReferencesObjectId(IGH_Param param, Guid id)
+	{
+		if (StructureReferencesObjectId(param.VolatileData, id))
+			return true;
+
+		var pdProp = param.GetType().GetProperty(
+			"PersistentData",
+			BindingFlags.Public | BindingFlags.Instance);
+
+		if (pdProp?.GetValue(param) is not IGH_Structure pd)
+			return false;
+
+		return StructureReferencesObjectId(pd, id);
+	}
+
+	private static bool StructureReferencesObjectId(IGH_Structure structure, Guid id)
+	{
+		if (structure == null || id == Guid.Empty)
+			return false;
+
+		foreach (object item in structure.AllData(true))
+		{
+			if (item is IGH_GeometricGoo geo && geo.ReferenceID == id)
+				return true;
+		}
+
+		return false;
 	}
 
 	private static void OnCanvasDoubleClick(object sender, MouseEventArgs e)
