@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <RootNamespace>SelectContainer</RootNamespace>
+    <AssemblyName>SelectContainer</AssemblyName>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- SDK still emits TargetFrameworkAttribute into obj\; disabling avoids CS0579 duplicate. -->
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <!-- WinForms shim from Rhino; Rhino provides runtime types on macOS. -->
+    <NoWarn>$(NoWarn);NU1701;MSB3277;CA1416</NoWarn>
+    <!-- Default Mac install; set RhinoSystemDir to the folder containing System.Windows.Forms.dll if different. -->
+    <RhinoSystemDir Condition="'$(RhinoSystemDir)' == ''">/Applications/Rhino 8.app/Contents/Frameworks/RhCore.framework/Versions/A/Resources/</RhinoSystemDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms">
+      <HintPath>$(RhinoSystemDir)System.Windows.Forms.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <PackageReference Include="Grasshopper" Version="8.16.25042.13001">
+      <GeneratePathProperty>true</GeneratePathProperty>
+    </PackageReference>
+    <PackageReference Include="RhinoCommon" Version="8.16.25042.13001">
+      <GeneratePathProperty>true</GeneratePathProperty>
+    </PackageReference>
+    <PackageReference Include="System.Drawing.Common" Version="7.0.0" />
+  </ItemGroup>
+
+  <Target Name="RenameToGha" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(TargetDir)$(AssemblyName).gha" OverwriteReadOnlyFiles="true" />
+  </Target>
+
+  <Target Name="CopyToGrasshopperLibraries" AfterTargets="RenameToGha">
+    <!-- Default: current user's Rhino 8 GH Libraries folder -->
+    <PropertyGroup Condition="'$(GrasshopperLibrariesPath)' == ''">
+      <GrasshopperLibrariesPath>$(HOME)/Library/Application Support/McNeel/Rhinoceros/8.0/Plug-ins/Grasshopper (b45a29b1-4343-4035-989e-044e8580d9cf)/Libraries</GrasshopperLibrariesPath>
+    </PropertyGroup>
+    <Copy Condition="Exists('$(GrasshopperLibrariesPath)')"
+           SourceFiles="$(TargetDir)$(AssemblyName).gha"
+           DestinationFolder="$(GrasshopperLibrariesPath)"
+           OverwriteReadOnlyFiles="true" />
+    <Warning Condition="!Exists('$(GrasshopperLibrariesPath)')" Text="Grasshopper Libraries folder not found at $(GrasshopperLibrariesPath). Copy $(TargetDir)$(AssemblyName).gha manually." />
+  </Target>
+</Project>

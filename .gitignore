@@ -1,0 +1,15 @@
+# Build
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+
+# IDE / tooling
+.idea/
+.vs/
+*.user
+*.suo
+*.DotSettings.user
+
+# macOS
+.DS_Store
