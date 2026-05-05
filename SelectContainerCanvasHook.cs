@@ -287,18 +287,23 @@ internal static class SelectContainerCanvasHook
 			if (go.CommandResult() != Result.Success)
 				return;
 
-			var goos = new List<IGH_Goo>(go.ObjectCount);
+			var picks =
+				new List<(ObjRef Ref, IGH_Goo Goo)>(go.ObjectCount);
 			for (var i = 0; i < go.ObjectCount; i++)
 			{
-				var goo = TryCreateGoo(typeNameKey, go.Object(i));
+				var objRef = go.Object(i);
+				var goo = TryCreateGoo(typeNameKey, objRef);
 				if (goo != null)
-					goos.Add(goo);
+					picks.Add((objRef, goo));
 			}
 
-			if (goos.Count == 0)
+			if (picks.Count == 0)
 				return;
 
-			ClearAndAppendPersistent(hit, goos);
+			ClearAndAppendPersistent(
+				hit,
+				picks,
+				IsBrepPersistentPickType(typeNameKey));
 
 			// Required when mutating PersistentData outside GH's own editors; otherwise previews / volatile
 			// data can fall out of sync (geometry present but Rhino/GH viewport preview missing).
@@ -990,7 +995,16 @@ internal static class SelectContainerCanvasHook
 		}
 	}
 
-	private static void ClearAndAppendPersistent(IGH_DocumentObject obj, IList<IGH_Goo> goos)
+	private static bool IsBrepPersistentPickType(string typeKey)
+	{
+		return typeKey.Equals("brep", StringComparison.OrdinalIgnoreCase) ||
+		       typeKey.Equals("breps", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static void ClearAndAppendPersistent(
+		IGH_DocumentObject obj,
+		IReadOnlyList<(ObjRef Ref, IGH_Goo Goo)> picks,
+		bool preferRhinoGeometryReference)
 	{
 		var pdProp = obj.GetType().GetProperty(
 			"PersistentData",
@@ -1008,16 +1022,43 @@ internal static class SelectContainerCanvasHook
 			null);
 		clearMethod?.Invoke(persistentData, null);
 
-		foreach (var goo in goos)
+		MethodInfo appendRhinoGeometryReference = null;
+		if (preferRhinoGeometryReference)
 		{
+			appendRhinoGeometryReference = pdType.GetMethod(
+				"AppendRhinoGeometryReference",
+				BindingFlags.Public | BindingFlags.Instance,
+				null,
+				new[] { typeof(ObjRef) },
+				null);
+		}
+
+		foreach (var pick in picks)
+		{
+			if (preferRhinoGeometryReference &&
+			    appendRhinoGeometryReference != null &&
+			    pick.Ref != null)
+			{
+				try
+				{
+					appendRhinoGeometryReference.Invoke(persistentData, new object[] { pick.Ref });
+					continue;
+				}
+				catch
+				{
+					// Fall through to goo Append identical to GH's typed storage.
+				}
+			}
+
+			var goo = pick.Goo;
 			if (goo == null)
 				continue;
 
-			var pick = PickAppendPersistent(pdType, goo);
-			if (pick == null)
+			var appendGoo = PickAppendPersistent(pdType, goo);
+			if (appendGoo == null)
 				break;
 
-			pick.Invoke(persistentData, new object[] { goo });
+			appendGoo.Invoke(persistentData, new object[] { goo });
 		}
 	}
 
