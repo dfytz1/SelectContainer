@@ -683,20 +683,33 @@ internal static class SelectContainerCanvasHook
 		if (gh != null)
 			return gh;
 
+		GH_Brep result = null;
 		switch (geomBase)
 		{
 			case Brep b when b.IsValid:
-				return new GH_Brep(b);
+				result = new GH_Brep(b);
+				break;
 			case Extrusion ex:
 			{
 				var bx = ex.ToBrep(false);
-				return bx != null && bx.IsValid ? new GH_Brep(bx) : TryFallBackGeometric(r, geomBase);
+				if (bx != null && bx.IsValid)
+					result = new GH_Brep(bx);
+				break;
 			}
 			case Surface s:
 			{
 				var br = Brep.CreateFromSurface(s);
-				return br != null && br.IsValid ? new GH_Brep(br) : TryFallBackGeometric(r, geomBase);
+				if (br != null && br.IsValid)
+					result = new GH_Brep(br);
+				break;
 			}
+		}
+
+		if (result != null)
+		{
+			if (result.ReferenceID == Guid.Empty && r?.ObjectId != Guid.Empty)
+				result.ReferenceID = r.ObjectId;
+			return result;
 		}
 
 		return TryFallBackGeometric(r, geomBase);
