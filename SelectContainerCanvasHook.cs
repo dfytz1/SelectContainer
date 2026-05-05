@@ -573,12 +573,22 @@ internal static class SelectContainerCanvasHook
 
 	private static IGH_Goo TryCreateSurfaceGoo(ObjRef r, GeometryBase geomBase)
 	{
+		if (geomBase == null)
+			return null;
+
 		var gh = TryGhPrimarySecondary<GH_Surface>(
 			PickConversionSources(r, geomBase),
 			GH_Convert.ToGHSurface_Primary,
 			GH_Convert.ToGHSurface_Secondary);
 		if (gh != null)
 			return gh;
+
+		if (r != null && r.ObjectId != Guid.Empty)
+		{
+			var refGoo = new GH_Surface();
+			refGoo.ReferenceID = r.ObjectId;
+			return refGoo;
+		}
 
 		if (geomBase is Brep brep && brep.Faces.Count > 0)
 		{
@@ -683,33 +693,31 @@ internal static class SelectContainerCanvasHook
 		if (gh != null)
 			return gh;
 
-		GH_Brep result = null;
+		if (r != null && r.ObjectId != Guid.Empty)
+		{
+			var refGoo = new GH_Brep();
+			refGoo.ReferenceID = r.ObjectId;
+			return refGoo;
+		}
+
 		switch (geomBase)
 		{
 			case Brep b when b.IsValid:
-				result = new GH_Brep(b);
-				break;
+				return new GH_Brep(b);
 			case Extrusion ex:
 			{
 				var bx = ex.ToBrep(false);
 				if (bx != null && bx.IsValid)
-					result = new GH_Brep(bx);
+					return new GH_Brep(bx);
 				break;
 			}
 			case Surface s:
 			{
 				var br = Brep.CreateFromSurface(s);
 				if (br != null && br.IsValid)
-					result = new GH_Brep(br);
+					return new GH_Brep(br);
 				break;
 			}
-		}
-
-		if (result != null)
-		{
-			if (result.ReferenceID == Guid.Empty && r?.ObjectId != Guid.Empty)
-				result.ReferenceID = r.ObjectId;
-			return result;
 		}
 
 		return TryFallBackGeometric(r, geomBase);
@@ -1027,6 +1035,7 @@ internal static class SelectContainerCanvasHook
 			return;
 
 		var pdType = persistentData.GetType();
+
 		var clearMethod = pdType.GetMethod(
 			"Clear",
 			BindingFlags.Public | BindingFlags.Instance,
