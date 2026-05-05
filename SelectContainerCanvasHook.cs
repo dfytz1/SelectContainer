@@ -576,19 +576,20 @@ internal static class SelectContainerCanvasHook
 		if (geomBase == null)
 			return null;
 
-		var gh = TryGhPrimarySecondary<GH_Surface>(
-			PickConversionSources(r, geomBase),
-			GH_Convert.ToGHSurface_Primary,
-			GH_Convert.ToGHSurface_Secondary);
-		if (gh != null)
-			return gh;
-
+		// Prefer referenced goo whenever we picked a Rhino object (see TryCreateBrepGoo).
 		if (r != null && r.ObjectId != Guid.Empty)
 		{
 			var refGoo = new GH_Surface();
 			refGoo.ReferenceID = r.ObjectId;
 			return refGoo;
 		}
+
+		var gh = TryGhPrimarySecondary<GH_Surface>(
+			PickConversionSources(r, geomBase),
+			GH_Convert.ToGHSurface_Primary,
+			GH_Convert.ToGHSurface_Secondary);
+		if (gh != null)
+			return gh;
 
 		if (geomBase is Brep brep && brep.Faces.Count > 0)
 		{
@@ -686,19 +687,21 @@ internal static class SelectContainerCanvasHook
 		if (geomBase == null)
 			return null;
 
-		var gh = TryGhPrimarySecondary<GH_Brep>(
-			PickConversionSources(r, geomBase),
-			GH_Convert.ToGHBrep_Primary,
-			GH_Convert.ToGHBrep_Secondary);
-		if (gh != null)
-			return gh;
-
+		// Prefer a referenced goo — skip GH_Convert paths when we have a valid pick.
+		// ToGHBrep_* can bake Surface/Extrusion into GH_Brep (IsValid=true, not referenced).
 		if (r != null && r.ObjectId != Guid.Empty)
 		{
 			var refGoo = new GH_Brep();
 			refGoo.ReferenceID = r.ObjectId;
 			return refGoo;
 		}
+
+		var gh = TryGhPrimarySecondary<GH_Brep>(
+			PickConversionSources(r, geomBase),
+			GH_Convert.ToGHBrep_Primary,
+			GH_Convert.ToGHBrep_Secondary);
+		if (gh != null)
+			return gh;
 
 		switch (geomBase)
 		{
